@@ -1,3 +1,4 @@
+
 (function(){
   var SUBJECTS=["국어","수학","사회","과학","도덕","영어","음악","미술","체육","실과","창체"];
   var DAYS=["월","화","수","목","금"], DAYS7=["일","월","화","수","목","금","토"];
@@ -6,7 +7,7 @@
   try{ store=JSON.parse(localStorage.getItem("portal6")||"{}")||{}; }catch(e){ store={}; }
   var ACCOUNTS={};
   (function(){
-    function add(id,name){ ACCOUNTS[id.toLowerCase()]={id:id,name:name}; }
+    function add(id,name){ ACCOUNTS[id.toLowerCase()]={id:id,name:name,office:/^cwoffice/i.test(id)}; }
     for(var g=1;g<=6;g++) for(var c=1;c<=2;c++) add("Cw2026"+g+c,g+"학년 "+c+"반");
     for(var n=1;n<=10;n++) add("Cwoffice"+n,"교무실 "+n);
     add("Cwrector","교장선생님"); add("Cwrector2","교감선생님");
@@ -157,6 +158,62 @@
   });
   document.addEventListener("click",function(){ $("#umenu").hidden=true; });
 
+  /* ----- sidebar / bottom tabs / search ----- */
+  var GROUPS=[
+    {cat:"home", label:"학년별 업무", items:[["home","학년별 업무 홈"],["timetable","시간표"],["weekly","주별 일정"],["monthly","월별 일정"],["academic","학사일정"],["trip","수학여행"],["graduation","졸업"],["students","학생관리"],["traits","학생특성"],["admin","행정"]]},
+    {cat:"subject", label:"교과 업무", items:[["subject","교과 업무"],["subject-eval","수행평가"]]}
+  ];
+  var sideMode="menu";
+  function catOf(h){ return (h==="subject"||h==="subject-eval")?"subject":"home"; }
+  function renderSide(h){
+    var g=GROUPS[catOf(h)==="subject"?1:0];
+    $("#sideHead").textContent=g.label;
+    var tree=$("#sideTree"); tree.innerHTML="";
+    if(sideMode==="fav"){
+      var f=favs();
+      if(!f.length){ tree.innerHTML='<li class="empty">즐겨찾기가 없습니다.</li>'; return; }
+      f.forEach(function(id){
+        var li=document.createElement("li"); li.textContent=TITLES[id]||id;
+        if(id===h) li.className="cur";
+        li.tabIndex=0;
+        li.addEventListener("click",function(){ location.hash="#"+id; });
+        tree.appendChild(li);
+      });
+      return;
+    }
+    g.items.forEach(function(it){
+      var li=document.createElement("li"); li.textContent=it[1];
+      if(it[0]===h) li.className="cur";
+      li.tabIndex=0;
+      li.addEventListener("click",function(){ location.hash="#"+it[0]; });
+      tree.appendChild(li);
+    });
+  }
+  $("#stabMenu").addEventListener("click",function(){ sideMode="menu"; this.classList.add("on"); $("#stabFav").classList.remove("on"); renderSide(curHash()); });
+  $("#stabFav").addEventListener("click",function(){ sideMode="fav"; this.classList.add("on"); $("#stabMenu").classList.remove("on"); renderSide(curHash()); });
+  function curHash(){ return (location.hash||"").replace("#","")||"home"; }
+  function renderBottomTabs(page){
+    var bt=$("#bottomtabs"); bt.innerHTML="";
+    var home=document.createElement("button"); home.type="button"; home.textContent="홈";
+    if(page==="home") home.className="on";
+    home.addEventListener("click",function(){ location.hash="#home"; });
+    bt.appendChild(home);
+    if(page!=="home"){
+      var b=document.createElement("button"); b.type="button"; b.className="on";
+      b.innerHTML=(TITLES[page]||(page==="subject"?"교과 업무":page))+' <x>\u2715</x>';
+      b.addEventListener("click",function(e){ if(e.target.tagName==="X") location.hash="#home"; });
+      bt.appendChild(b);
+    }
+  }
+  $("#gsearchForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    var q=$("#gsearch").value.trim(); if(!q) return;
+    var all=GROUPS[0].items.concat(GROUPS[1].items);
+    var hit=all.filter(function(it){ return it[1].indexOf(q)>-1; })[0];
+    if(hit){ $("#gsearch").value=""; location.hash="#"+hit[0]; }
+    else toast("검색 결과가 없습니다.");
+  });
+
   /* ----- router ----- */
   function route(){
     var h=(location.hash||"").replace("#","")||"login";
@@ -165,7 +222,9 @@
     else if(page==="login") page="home";
     if(!$('[data-page="'+page+'"]')) page=session?"home":"login";
     $$("[data-page]").forEach(function(s){ s.hidden=s.getAttribute("data-page")!==page; });
-    $$(".nav a").forEach(function(a){ a.style.textDecoration=""; });
+    $$(".catbar a").forEach(function(a){ a.classList.toggle("on",session&&a.getAttribute("data-cat")===catOf(page==="subject"?h:page)); });
+    $("#side").hidden=!session; $("#bottomtabs").hidden=!session;
+    if(session){ renderSide(page==="subject"?h:page); renderBottomTabs(page); }
     if(page==="home") renderFav();
     if(page==="admin") renderNotices();
     window.scrollTo(0,0);
@@ -233,8 +292,9 @@
   function pad(n){ return (n<10?"0":"")+n; }
   function openWin(id){
     var o=$("#"+id); if(!o) return; o.hidden=false;
+    if(id==="w-misc"){ var ac=ACCOUNTS[session]; var eu=$("#efUser"); if(eu) eu.textContent=ac?ac.name+(/님$/.test(ac.name)?"":" 님"):""; }
     var f=o.querySelector("input:not([disabled]):not([readonly]):not([type=checkbox]):not([type=radio]),textarea");
-    if(f&&!f.closest(".pane:not(.on)")) setTimeout(function(){ try{ f.focus(); }catch(e){} },20);
+    if(f&&id!=="w-misc"&&!f.closest(".pane:not(.on)")) setTimeout(function(){ try{ f.focus(); }catch(e){} },20);
   }
   function closeWin(o){ if(o) o.hidden=true; }
   document.addEventListener("click",function(e){
@@ -247,9 +307,16 @@
     }
   });
   $$(".ov").forEach(function(o){ o.addEventListener("mousedown",function(e){ if(e.target===o) closeWin(o); }); });
-  document.addEventListener("keydown",function(e){ if(e.key==="Escape") $$(".ov:not([hidden])").forEach(closeWin); });
+  document.addEventListener("keydown",function(e){
+    if(e.key!=="Escape") return;
+    var open=$$(".ov:not([hidden])"); if(open.length) closeWin(open[open.length-1]);
+  });
+  function showAlert(msg){ $("#alertMsg").textContent=msg; $("#w-alert").hidden=false; setTimeout(function(){ $("#alertOk").focus(); },20); }
+  $$("[data-req]").forEach(function(b){ b.addEventListener("click",function(){ showAlert("요청이 완료되었습니다."); }); });
   $$(".dlg.mock").forEach(function(d){
     d.addEventListener("click",function(e){
+      var m=e.target.closest(".ef-nav span:not(.on),.ef-tree li:not(.cur),.ef-stabs span:not(.on)");
+      if(m){ toast("준비 중인 메뉴입니다."); return; }
       var b=e.target.closest("button");
       if(!b||b.hasAttribute("data-close")||b.hasAttribute("data-act")) return;
       toast("준비 중인 기능입니다.");
@@ -287,10 +354,13 @@
   (function(){
     function ymd(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
     var d=new Date(), e=new Date(d.getTime()+30*864e5);
-    $("#sD1").value=ymd(d); $("#sD2").value=ymd(e);
+    $("#sD1").value=ymd(d); $("#sD2").value=ymd(e); $("#efD1").value=ymd(d); $("#efD2").value=ymd(e);
     function bytes(s){ var n=0; for(var i=0;i<s.length;i++) n+=s.charCodeAt(i)<128?1:2; return n; }
     $("#sTitle").addEventListener("input",function(){ $("#bT").textContent=bytes(this.value); });
     $("#sBody").addEventListener("input",function(){ $("#bB").textContent=bytes(this.value); });
+    $("#efTitle").addEventListener("input",function(){ $("#efbT").textContent=bytes(this.value); });
+    $("#efBody").addEventListener("input",function(){ $("#efbB").textContent=bytes(this.value); });
+    $("#efbT").textContent=bytes($("#efTitle").value);
     var body=$("#itemBody"), none=body.querySelector(".nr");
     function calc(){
       var tot=0;
@@ -332,6 +402,12 @@
   ];
   if(!Array.isArray(store._notices)) store._notices=NT_DEFAULT.map(function(n){ return {t:n.t,a:n.a,d:n.d,v:n.v}; });
   var ntPage=1, ntSize=10;
+  function canWrite(){ var a=ACCOUNTS[session]; return !!(a&&a.office); }
+  function updateNoticeBtn(){
+    var b=$("#writeNotice"), ok=canWrite();
+    b.classList.toggle("off",!ok); b.setAttribute("aria-disabled",ok?"false":"true");
+    b.title=ok?"":"교무실 계정만 작성할 수 있습니다.";
+  }
   function openNotice(n){
     n.v=(n.v||0)+1; persist();
     $("#vTitle").textContent=n.t;
@@ -340,6 +416,7 @@
     openWin("w-view"); renderNotices();
   }
   function renderNotices(){
+    updateNoticeBtn();
     var list=store._notices, tb=$("#ntBody"); tb.innerHTML="";
     var pages=Math.max(1,Math.ceil(list.length/ntSize)); if(ntPage>pages) ntPage=pages;
     var start=(ntPage-1)*ntSize;
@@ -363,11 +440,13 @@
   }
   $("#ntSize").addEventListener("change",function(){ ntSize=parseInt(this.value,10)||10; ntPage=1; renderNotices(); });
   $("#writeNotice").addEventListener("click",function(){
+    if(!canWrite()){ showAlert("공지사항은 교무실 계정만 작성할 수 있습니다."); return; }
     var a=ACCOUNTS[session]; $("#nAuthor").value=a?a.name:"";
     $("#nTitle").value=""; $("#nBody").value=""; openWin("w-write");
   });
   $("#noticeForm").addEventListener("submit",function(e){
     e.preventDefault();
+    if(!canWrite()){ showAlert("공지사항은 교무실 계정만 작성할 수 있습니다."); return; }
     var t=$("#nTitle").value.trim();
     if(!t){ toast("제목을 입력해 주세요."); $("#nTitle").focus(); return; }
     var d=new Date();
